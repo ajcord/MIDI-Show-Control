@@ -5,7 +5,7 @@
  * This file contains the code that processes received commands and generally
  * manages the Arduino.
  *
- * Last modified January 4, 2015
+ * Last modified January 6, 2015
  *
  * Copyright (C) 2015. All Rights Reserved.
  */
@@ -19,9 +19,6 @@
 #include "MIDI.h"
 #include "midi_Namespace.h"
 
-
-//#include "firmware.h"
-
 /******************************************************************************
  * Internal constants
  ******************************************************************************/
@@ -30,7 +27,6 @@
 //https://www.sparkfun.com/products/9598
 #define MIDI_IN_PIN                 0
 #define MIDI_OUT_PIN                1
-//#define MIDI_SERIAL_SPEED           31250
 
 //LCD
 //http://learn.adafruit.com/character-lcds
@@ -47,6 +43,12 @@
 #define LCD_COLUMNS                 20
 #define LCD_ROWS                    4
 
+//Colors
+#define BACKLIGHT_OFF               0x000000
+#define RED                         0xff0000
+#define GREEN                       0x00ff00
+#define BLUE                        0x0000ff
+
 //Pushbutton
 #define BUTTON_LED_PIN              13
 #define BUTTON_PIN                  2 //TBD
@@ -58,11 +60,6 @@ typedef enum TYPE_TAG {
   FIREWORKS = 0x61,
   ALL = 0x7f
 } TYPE;
-
-typedef enum STATUS_TAG {
-  PASS,
-  PAUSED
-} STATUS;
 
 typedef enum COMMAND_TAG {
   GO = 0x01,
@@ -92,14 +89,25 @@ void updateLCD(long cue,
                TYPE type,
                int id,
                char* packet,
-               COMMAND command);
+               COMMAND command,
+               bool paused);
+void displayCue(long cue);
+void displayList(int list);
+void displayType(TYPE type);
+void displayID(int id);
+void displayPacket(char* packet);
+
 void setBacklight(int red, int green, int blue);
 void setBacklight(int rgb);
+void buttonInterrupt();
+void pauseMIDI();
+void passMIDI();
 
 /******************************************************************************
  * Internal global variables
  ******************************************************************************/
 
+//Create the global LCD object
 LiquidCrystal LCD(LCD_CONTROL_PIN,
                   LCD_ENABLE_PIN,
                   LCD_DATA_BIT_4_PIN,
@@ -107,6 +115,11 @@ LiquidCrystal LCD(LCD_CONTROL_PIN,
                   LCD_DATA_BIT_6_PIN,
                   LCD_DATA_BIT_7_PIN);
 
+//Create the global MIDI object
+MIDI_CREATE_DEFAULT_INSTANCE();
+
+//Whether MIDI passthrough is paused or not
+volatile bool paused = false;
 
 /******************************************************************************
  * Function definitions
@@ -118,8 +131,8 @@ LiquidCrystal LCD(LCD_CONTROL_PIN,
  *  Note: This function is called once at power up.
  */
 void setup() {
-  //FIXME: Setup the MIDI serial
-  //MIDI.begin();
+  //Setup the MIDI serial
+  MIDI.begin();
 
   //Setup the LCD
   setupLCD();
@@ -127,17 +140,20 @@ void setup() {
   //Setup the rest of the pins
   pinMode(BUTTON_PIN, INPUT);
   pinMode(BUTTON_LED_PIN, OUTPUT);
+
+  //Setup the button pin as an interrupt
+  attachInterrupt(0, buttonInterrupt, FALLING);
 }
 
 /**
  *  Note: This function is called in a forever loop in main().
  */
 void loop() {
-
+  MIDI.read();
 }
 
 /**
- *  Sets up the LCD
+ *  Sets up the user interface on the LCD
  */
 void setupLCD() {
   LCD.begin(LCD_COLUMNS, LCD_ROWS);
@@ -162,6 +178,8 @@ void setupLCD() {
   pinMode(LCD_RED_BACKLIGHT_PIN, OUTPUT);
   pinMode(LCD_GREEN_BACKLIGHT_PIN, OUTPUT);
   pinMode(LCD_BLUE_BACKLIGHT_PIN, OUTPUT);
+
+  setBacklight(BACKLIGHT_OFF);
 }
 
 /**
@@ -175,9 +193,76 @@ void updateLCD(long cue,
                int id,
                char* packet,
                COMMAND command) {
-  //Convert the cue number to a string
+  displayCue(cue);
+  displayList(list);
+  displayType(type);
+  displayID(id);
+  displayPacket(packet);
+}
+
+/**
+ *  Displays the cue number
+ *  @param cue The cue number in the format it was received via MIDI
+ */
+void displayCue(long cue) {
+  //TODO: Convert the cue number to a string
   LCD.setCursor(0, 5);
   LCD.print(cue);
+}
+
+/**
+ *  Displays the list number
+ *  @param list The list number
+ */
+void displayList(int list) {
+  LCD.setCursor(0, 18);
+  LCD.print(list, HEX);
+}
+
+/**
+ *  Displays the type
+ *  @param type The type of command that was received
+ */
+void displayType(TYPE type) {
+  LCD.setCursor(1, 5);
+  switch(type) {
+    case LIGHT:
+      LCD.print("LIGHT    ");
+      break;
+    case SOUND:
+      LCD.print("SOUND    ");
+      break;
+    case FIREWORKS:
+      LCD.print("FIREWORKS");
+      break;
+    case ALL:
+      LCD.print("ALL      ");
+      break;
+  }
+}
+
+/**
+ *  Displays the ID
+ *  @param id The ID
+ */
+void displayID(int id) {
+  LCD.setCursor(1, 18);
+  LCD.print(id, HEX);
+}
+
+/**
+ *  Displays the packet
+ *  @param packet The packet bytes received
+ */
+void displayPacket(char* packet) {
+  for (int i = 0; ; i++) {
+    //Print each byte in the packet in hex
+    LCD.setCursor(2, i*2);
+    LCD.print(packet[i], HEX);
+
+    //Stop when we have printed the stop byte
+    if (packet[i] == 0xF7) break;
+  }
 }
 
 /**
@@ -201,4 +286,40 @@ void setBacklight(int red, int green, int blue) {
  */
 void setBacklight(int rgb) {
   setBacklight((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
+}
+
+/**
+ *  Handles button presses
+ */
+void buttonInterrupt() {
+  paused = !paused;
+  if (paused) {
+    pauseMIDI();
+  } else {
+    passMIDI();
+  }
+}
+
+/**
+ *  Disables MIDI passthrough
+ */
+void pauseMIDI() {
+  MIDI.turnThruOff();
+
+  LCD.setCursor(2, 8);
+  LCD.print("-MSC*PAUSED*");
+
+  setBacklight(RED);
+}
+
+/**
+ *  Enables MIDI passthrough
+ */
+void passMIDI() {
+  MIDI.turnThruOn();
+
+  LCD.setCursor(2, 8);
+  LCD.print("-MSC-PASS >>");
+
+  setBacklight(GREEN);
 }
