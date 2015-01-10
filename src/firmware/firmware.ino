@@ -40,11 +40,11 @@
 #define LCD_DATA_BIT_5_PIN          10
 #define LCD_DATA_BIT_6_PIN          11
 #define LCD_DATA_BIT_7_PIN          12
-
 #define LCD_COLUMNS                 20
 #define LCD_ROWS                    4
+#define SYSEX_FLASH_TIME            500 //milliseconds
 
-//Colors
+//Colors (0xRRGGBB)
 #define BACKLIGHT_OFF               0x000000
 #define RED                         0xff0000
 #define GREEN                       0x00ff00
@@ -52,7 +52,21 @@
 
 //Pushbutton
 #define BUTTON_LED_PIN              13
-#define BUTTON_PIN                  2 //TBD
+#define BUTTON_PIN                  2
+#define DEBOUNCE_TIME               200 //milliseconds
+#define NORMALLY_OPEN               0
+#define NORMALLY_CLOSED             1
+
+//Button configuration (compile-time option)
+#define BUTTON_MODE                 NORMALLY_OPEN
+
+#if BUTTON_MODE == NORMALLY_OPEN
+#define BUTTON_DOWN                 RISING
+#define BUTTON_UP                   FALLING
+#else
+#define BUTTON_DOWN                 FALLING
+#define BUTTON_UP                   RISING
+#endif
 
 /******************************************************************************
  * Internal function prototypes
@@ -64,10 +78,12 @@ void displayCue(char* cue);
 void displayList(byte list);
 void displayType(TYPE type);
 void displayID(byte id);
-void displayPacket(const byte* data);
+void displayPacket(const byte* data, int len);
 
 void setBacklight(int red, int green, int blue);
 void setBacklight(int rgb);
+
+void setupButton();
 void buttonInterrupt();
 void pauseMIDI();
 void passMIDI();
@@ -95,42 +111,56 @@ volatile bool paused = false;
  ******************************************************************************/
 
 /**
- *  Sets up MIDI, the LCD, etc.
- *
- *  Note: This function is called once at power up.
+ *  Sets up MIDI, the LCD, and the button
  */
 void setup() {
-  //Setup the MIDI serial
   MIDI.begin();
 
-  //Setup the LCD
   setupLCD();
 
-  //Setup the rest of the pins
-  pinMode(BUTTON_PIN, INPUT);
-  pinMode(BUTTON_LED_PIN, OUTPUT);
-
-  //Setup the button pin as an interrupt
-  attachInterrupt(0, buttonInterrupt, FALLING);
+  setupButton();
 }
 
 /**
- *  Note: This function is called in a forever loop in main().
+ *  Checks for new MIDI data, parses it, and updates the LCD accordingly
  */
 void loop() {
+  static long lastSysExTime = 0;
+  static bool lcdIsBlue = false;
+
   if (MIDI.read()) {
+    //Flash the LCD blue
+    lastSysExTime = millis();
+    setBacklight(BLUE);
+    lcdIsBlue = true;
+
+    //Get the MSC data and update the LCD
     MSC parsedData(MIDI.getSysExArray(), MIDI.getSysExArrayLength());
     updateLCD(parsedData);
   }
+
+  //Check whether the display has been blue for long enough
+  if (lcdIsBlue && millis() - lastSysExTime > SYSEX_FLASH_TIME) {
+    //Decide which color to revert to
+    if (paused) {
+      setBacklight(RED);
+    } else {
+      setBacklight(GREEN);
+    }
+    lcdIsBlue = false;
+  }
 }
+
+
+
+///////////////////////////////   LCD   ////////////////////////////////////////
 
 /**
  *  Sets up the user interface on the LCD
  */
 void setupLCD() {
-  LCD.begin(LCD_COLUMNS, LCD_ROWS);
-  
   //Prepare the LCD
+  LCD.begin(LCD_COLUMNS, LCD_ROWS);
   LCD.noDisplay();
   LCD.clear();
 
@@ -143,28 +173,26 @@ void setupLCD() {
   LCD.setCursor(0, 1); //Newline
   LCD.print("TYPE:          ID:  ");
 
-  //Display the interface
-  LCD.display();
-
   //Setup the backlight
   pinMode(LCD_RED_BACKLIGHT_PIN, OUTPUT);
   pinMode(LCD_GREEN_BACKLIGHT_PIN, OUTPUT);
   pinMode(LCD_BLUE_BACKLIGHT_PIN, OUTPUT);
-
   setBacklight(BACKLIGHT_OFF);
+
+  //Turn on the display
+  LCD.display();
 }
 
 /**
  *  Updates the LCD user interface with new values
- *
- *  TODO: Figure out what types the cue and packet should be
+ *  @param packet The parsed MSC packet
  */
 void updateLCD(MSC packet) {
   displayCue(packet.getCue());
   displayList(packet.getList());
   displayType(packet.getType());
   displayID(packet.getID());
-  displayPacket(packet.getData());
+  displayPacket(packet.getData(), packet.getLength());
 }
 
 /**
@@ -182,7 +210,7 @@ void displayCue(char* cue) {
  */
 void displayList(byte list) {
   LCD.setCursor(0, 18);
-  LCD.print((char)list, HEX);
+  LCD.print(list, HEX);
 }
 
 /**
@@ -213,21 +241,24 @@ void displayType(TYPE type) {
  */
 void displayID(byte id) {
   LCD.setCursor(1, 18);
-  LCD.print((char)id, HEX);
+  LCD.print(id, HEX);
 }
 
 /**
  *  Displays the packet
  *  @param packet The packet bytes received
  */
-void displayPacket(const byte* data) {
-  for (int i = 0; ; i++) {
+void displayPacket(const byte* data, int len) {
+  for (int i = 0; i < len && i < LCD_COLUMNS/2; i++) {
     //Print each byte in the packet in hex
     LCD.setCursor(2, i*2);
     LCD.print((char)data[i], HEX);
+  }
 
-    //Stop when we have printed the stop byte
-    if (data[i] == 0xF7) break;
+  //Indicate if the packet is too long to fit on the screen
+  if (len > LCD_COLUMNS/2) {
+    LCD.setCursor(2, LCD_COLUMNS - 2);
+    LCD.print(">>");
   }
 }
 
@@ -254,15 +285,38 @@ void setBacklight(int rgb) {
   setBacklight((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
 }
 
+
+
+/////////////////////////////   Button   ///////////////////////////////////////
+
 /**
- *  Handles button presses
+ *  Sets up the pause button
+ */
+void setupButton() {
+  //Setup the button pins
+  pinMode(BUTTON_PIN, INPUT);
+  pinMode(BUTTON_LED_PIN, OUTPUT);
+  digitalWrite(BUTTON_LED_PIN, HIGH); //Can also use analogWrite for PWM
+
+  //Attach an interrupt to the button pin to listen for presses
+  attachInterrupt(0, buttonInterrupt, BUTTON_DOWN);
+}
+
+/**
+ *  Handles button press events, including debouncing
  */
 void buttonInterrupt() {
-  paused = !paused;
-  if (paused) {
-    pauseMIDI();
-  } else {
-    passMIDI();
+  //The time in milliseconds of the last button press
+  static long lastButtonPress = 0;
+
+  if (millis() - lastButtonPress > DEBOUNCE_TIME) {
+    lastButtonPress = millis();
+    paused = !paused;
+    if (paused) {
+      pauseMIDI();
+    } else {
+      passMIDI();
+    }
   }
 }
 

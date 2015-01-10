@@ -69,6 +69,7 @@ public:
   char* getCue();
   byte getList();
   const byte* getData();
+  int getLength();
 
 private:
   byte id;

@@ -39,7 +39,9 @@ MSC::MSC(const byte* packet, int len) {
   type = (TYPE)data[4];
   command = (COMMAND)data[5];
 
+  //Cue number is optional
   if (len > 7) {
+    //Copy the cue string out of the data
     cue = new char[len - 7];
     memcpy(cue, data + 6, len - 6);
     cue[len - 7] = 0;
@@ -48,7 +50,7 @@ MSC::MSC(const byte* packet, int len) {
 
 MSC::~MSC() {
   delete cue;
-  //Don't delete data because it was allocated in MIDI class
+  //Don't delete data[] because it was allocated in MIDI class
 }
 
 byte MSC::getID() {
@@ -73,4 +75,8 @@ byte MSC::getList() {
 
 const byte* MSC::getData() {
   return data;
+}
+
+int MSC::getLength() {
+  return length;
 }
