@@ -5,7 +5,7 @@
  * This file contains the code that processes received commands and generally
  * manages the Arduino.
  *
- * Last modified January 6, 2015
+ * Last modified January 9, 2015
  *
  * Copyright (C) 2015. All Rights Reserved.
  */
@@ -18,6 +18,7 @@
 #include "LiquidCrystal.h"
 #include "MIDI.h"
 #include "midi_Namespace.h"
+#include "msc.h"
 
 /******************************************************************************
  * Internal constants
@@ -53,49 +54,17 @@
 #define BUTTON_LED_PIN              13
 #define BUTTON_PIN                  2 //TBD
 
-//Custom types
-typedef enum TYPE_TAG {
-  LIGHT = 0x01,
-  SOUND = 0x10,
-  FIREWORKS = 0x61,
-  ALL = 0x7f
-} TYPE;
-
-typedef enum COMMAND_TAG {
-  GO = 0x01,
-  STOP,
-  RESUME,
-  TIMED_GO,
-  LOAD,
-  SET,
-  FIRE,
-  ALL_OFF,
-  RESTORE,
-  RESET,
-  GO_OFF,
-  STANDBY_PLUS = 0x11,
-  STANDBY_MINUS,
-  SEQUENCE_PLUS,
-  SEQUENCE_MINUS
-} COMMAND;
-
 /******************************************************************************
  * Internal function prototypes
  ******************************************************************************/
 
 void setupLCD();
-void updateLCD(long cue,
-               int list,
-               TYPE type,
-               int id,
-               char* packet,
-               COMMAND command,
-               bool paused);
-void displayCue(long cue);
-void displayList(int list);
+void updateLCD(MSC packet);
+void displayCue(char* cue);
+void displayList(byte list);
 void displayType(TYPE type);
-void displayID(int id);
-void displayPacket(char* packet);
+void displayID(byte id);
+void displayPacket(const byte* data);
 
 void setBacklight(int red, int green, int blue);
 void setBacklight(int rgb);
@@ -149,7 +118,10 @@ void setup() {
  *  Note: This function is called in a forever loop in main().
  */
 void loop() {
-  MIDI.read();
+  if (MIDI.read()) {
+    MSC parsedData(MIDI.getSysExArray(), MIDI.getSysExArrayLength());
+    updateLCD(parsedData);
+  }
 }
 
 /**
@@ -187,25 +159,19 @@ void setupLCD() {
  *
  *  TODO: Figure out what types the cue and packet should be
  */
-void updateLCD(long cue,
-               int list,
-               TYPE type,
-               int id,
-               char* packet,
-               COMMAND command) {
-  displayCue(cue);
-  displayList(list);
-  displayType(type);
-  displayID(id);
-  displayPacket(packet);
+void updateLCD(MSC packet) {
+  displayCue(packet.getCue());
+  displayList(packet.getList());
+  displayType(packet.getType());
+  displayID(packet.getID());
+  displayPacket(packet.getData());
 }
 
 /**
  *  Displays the cue number
- *  @param cue The cue number in the format it was received via MIDI
+ *  @param cue The formatted, ASCII cue number
  */
-void displayCue(long cue) {
-  //TODO: Convert the cue number to a string
+void displayCue(char* cue) {
   LCD.setCursor(0, 5);
   LCD.print(cue);
 }
@@ -214,9 +180,9 @@ void displayCue(long cue) {
  *  Displays the list number
  *  @param list The list number
  */
-void displayList(int list) {
+void displayList(byte list) {
   LCD.setCursor(0, 18);
-  LCD.print(list, HEX);
+  LCD.print((char)list, HEX);
 }
 
 /**
@@ -245,23 +211,23 @@ void displayType(TYPE type) {
  *  Displays the ID
  *  @param id The ID
  */
-void displayID(int id) {
+void displayID(byte id) {
   LCD.setCursor(1, 18);
-  LCD.print(id, HEX);
+  LCD.print((char)id, HEX);
 }
 
 /**
  *  Displays the packet
  *  @param packet The packet bytes received
  */
-void displayPacket(char* packet) {
+void displayPacket(const byte* data) {
   for (int i = 0; ; i++) {
     //Print each byte in the packet in hex
     LCD.setCursor(2, i*2);
-    LCD.print(packet[i], HEX);
+    LCD.print((char)data[i], HEX);
 
     //Stop when we have printed the stop byte
-    if (packet[i] == 0xF7) break;
+    if (data[i] == 0xF7) break;
   }
 }
 
