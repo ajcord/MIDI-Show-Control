@@ -4,7 +4,7 @@
  *
  * This file contains the code for interpreting MSC commands.
  *
- * Last modified January 9, 2015
+ * Last modified January 10, 2015
  *
  * Copyright (C) 2015. All Rights Reserved.
  */
