@@ -49,9 +49,9 @@
 #define RED                         0xff0000
 #define GREEN                       0x00ff00
 #define BLUE                        0x0000ff
+#define WHITE                       0xff9090 //(calibrated)
 
 //Pushbutton
-#define BUTTON_LED_PIN              13
 #define BUTTON_PIN                  2
 #define DEBOUNCE_TIME               200 //milliseconds
 #define NORMALLY_OPEN               0
@@ -81,7 +81,7 @@ void displayID(byte id);
 void displayPacket(const byte* data, int len);
 
 void setBacklight(int red, int green, int blue);
-void setBacklight(int rgb);
+void setBacklight(long rgb);
 
 void setupButton();
 void buttonInterrupt();
@@ -114,7 +114,9 @@ volatile bool paused = false;
  *  Sets up MIDI, the LCD, and the button
  */
 void setup() {
-  MIDI.begin();
+  Serial.begin(115200);
+
+  //MIDI.begin();
 
   setupLCD();
 
@@ -270,9 +272,9 @@ void displayPacket(const byte* data, int len) {
  *  @param blue   The blue value of the backlight
  */
 void setBacklight(int red, int green, int blue) {
-  analogWrite(LCD_RED_BACKLIGHT_PIN, red);
-  analogWrite(LCD_GREEN_BACKLIGHT_PIN, green);
-  analogWrite(LCD_BLUE_BACKLIGHT_PIN, blue);
+  analogWrite(LCD_RED_BACKLIGHT_PIN, 0xff - red);
+  analogWrite(LCD_GREEN_BACKLIGHT_PIN, 0xff - green);
+  analogWrite(LCD_BLUE_BACKLIGHT_PIN, 0xff - blue);
 }
 
 /**
@@ -281,7 +283,7 @@ void setBacklight(int red, int green, int blue) {
  *  @param rgb    The red, green, and blue values of the backlight
  *                encoded in hex as RRGGBB
  */
-void setBacklight(int rgb) {
+void setBacklight(long rgb) {
   setBacklight((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
 }
 
@@ -293,10 +295,8 @@ void setBacklight(int rgb) {
  *  Sets up the pause button
  */
 void setupButton() {
-  //Setup the button pins
+  //Setup the button pin
   pinMode(BUTTON_PIN, INPUT);
-  pinMode(BUTTON_LED_PIN, OUTPUT);
-  digitalWrite(BUTTON_LED_PIN, HIGH); //Can also use analogWrite for PWM
 
   //Attach an interrupt to the button pin to listen for presses
   attachInterrupt(0, buttonInterrupt, BUTTON_DOWN);
@@ -309,15 +309,20 @@ void buttonInterrupt() {
   //The time in milliseconds of the last button press
   static long lastButtonPress = 0;
 
+  Serial.print("I");
   if (millis() - lastButtonPress > DEBOUNCE_TIME) {
-    lastButtonPress = millis();
     paused = !paused;
+    Serial.print("Paused state: ");
+    Serial.println(paused);
+    /*
     if (paused) {
       pauseMIDI();
     } else {
       passMIDI();
     }
+    */
   }
+  lastButtonPress = millis();
 }
 
 /**
