@@ -54,6 +54,11 @@ typedef enum COMMAND_TAG {
   SEQUENCE_MINUS
 } COMMAND;
 
+typedef struct ARRAY_TAG {
+  const byte* data;
+  int length;
+} ARRAY;
+
 /******************************************************************************
  * Class definition
  ******************************************************************************/
@@ -67,7 +72,7 @@ public:
   TYPE getType();
   COMMAND getCommand();
   char* getCue();
-  byte getList();
+  char* getList();
   const byte* getData();
   int getLength();
 
@@ -76,7 +81,7 @@ private:
   TYPE type;
   COMMAND command;
   char* cue;
-  byte list;
+  char* list;
   const byte* data;
   int length;
 };

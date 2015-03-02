@@ -42,7 +42,7 @@
 #define LCD_DATA_BIT_7_PIN          12
 #define LCD_COLUMNS                 20
 #define LCD_ROWS                    4
-#define SYSEX_FLASH_TIME            500 //milliseconds
+#define SYSEX_FLASH_TIME            1000 //milliseconds
 
 //Colors (0xRRGGBB)
 #define BACKLIGHT_OFF               0x000000
@@ -53,7 +53,7 @@
 
 //Pushbutton
 #define BUTTON_PIN                  2
-#define DEBOUNCE_TIME               200 //milliseconds
+#define DEBOUNCE_TIME               300 //milliseconds
 #define NORMALLY_OPEN               0
 #define NORMALLY_CLOSED             1
 
@@ -75,7 +75,7 @@
 void setupLCD();
 void updateLCD(MSC packet);
 void displayCue(char* cue);
-void displayList(byte list);
+void displayList(char* list);
 void displayType(TYPE type);
 void displayID(byte id);
 void displayPacket(const byte* data, int len);
@@ -87,6 +87,8 @@ void setupButton();
 void buttonInterrupt();
 void pauseMIDI();
 void passMIDI();
+
+void lcdPrintHex(byte c);
 
 /******************************************************************************
  * Internal global variables
@@ -120,6 +122,8 @@ void setup() {
 
   setupLCD();
 
+  passMIDI();
+
   setupButton();
 }
 
@@ -130,14 +134,19 @@ void loop() {
   static long lastSysExTime = 0;
   static bool lcdIsBlue = false;
 
-  if (MIDI.read()) {
+  static bool test = true;
+  if (MIDI.read() || test) {
     //Flash the LCD blue
     lastSysExTime = millis();
     setBacklight(BLUE);
     lcdIsBlue = true;
+    test = false;
 
     //Get the MSC data and update the LCD
-    MSC parsedData(MIDI.getSysExArray(), MIDI.getSysExArrayLength());
+    // MSC parsedData(MIDI.getSysExArray(), MIDI.getSysExArrayLength());
+    byte sysExArray[] = {0xF0, 0x7F, 0x01, 0x02, 0x7F, 0x01, 0x32, 0x2E, 0x35, 0xF7};
+    int sysExArrayLength = 10;
+    MSC parsedData(sysExArray, sysExArrayLength);
     updateLCD(parsedData);
   }
 
@@ -198,21 +207,39 @@ void updateLCD(MSC packet) {
 }
 
 /**
+ *  Prints a byte's hexadecimal representation to the LCD
+ *  @param c The byte to print
+ */
+void lcdPrintHex(byte c) {
+  if (c < 0x10) {
+    LCD.print(0);
+  }
+  LCD.print(c, HEX);
+}
+
+/**
  *  Displays the cue number
  *  @param cue The formatted, ASCII cue number
  */
 void displayCue(char* cue) {
-  LCD.setCursor(0, 5);
+  LCD.setCursor(5, 0);
   LCD.print(cue);
 }
 
 /**
  *  Displays the list number
- *  @param list The list number
+ *  @param list The formatted, ASCII list number
  */
-void displayList(byte list) {
-  LCD.setCursor(0, 18);
-  LCD.print(list, HEX);
+void displayList(char* list) {
+  LCD.setCursor(18, 0);
+  
+  //TODO: figure out what to print here. List string might be too long.
+  // if (list != NULL) {
+    // lcdPrintHex(list);
+    // LCD.print(list);
+  // } else {
+    LCD.print("??");
+  // }
 }
 
 /**
@@ -220,19 +247,19 @@ void displayList(byte list) {
  *  @param type The type of command that was received
  */
 void displayType(TYPE type) {
-  LCD.setCursor(1, 5);
+  LCD.setCursor(5, 1);
   switch(type) {
     case LIGHT:
-      LCD.print("LIGHT    ");
+      LCD.print("LIGHT");
       break;
     case SOUND:
-      LCD.print("SOUND    ");
+      LCD.print("SOUND");
       break;
     case FIREWORKS:
-      LCD.print("FIREWORKS");
+      LCD.print("PYRO ");
       break;
     case ALL:
-      LCD.print("ALL      ");
+      LCD.print("ALL  ");
       break;
   }
 }
@@ -242,8 +269,8 @@ void displayType(TYPE type) {
  *  @param id The ID
  */
 void displayID(byte id) {
-  LCD.setCursor(1, 18);
-  LCD.print(id, HEX);
+  LCD.setCursor(18, 1);
+  lcdPrintHex(id);
 }
 
 /**
@@ -251,16 +278,16 @@ void displayID(byte id) {
  *  @param packet The packet bytes received
  */
 void displayPacket(const byte* data, int len) {
+  LCD.setCursor(0, 2);
   for (int i = 0; i < len && i < LCD_COLUMNS/2; i++) {
     //Print each byte in the packet in hex
-    LCD.setCursor(2, i*2);
-    LCD.print((char)data[i], HEX);
+    lcdPrintHex(data[i]);
   }
 
   //Indicate if the packet is too long to fit on the screen
   if (len > LCD_COLUMNS/2) {
-    LCD.setCursor(2, LCD_COLUMNS - 2);
-    LCD.print(">>");
+    LCD.setCursor(LCD_COLUMNS - 2, 2);
+    LCD.print("..");
   }
 }
 
@@ -296,10 +323,14 @@ void setBacklight(long rgb) {
  */
 void setupButton() {
   //Setup the button pin
+#if BUTTON_MODE == NORMALLY_OPEN
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+#else
   pinMode(BUTTON_PIN, INPUT);
+#endif
 
   //Attach an interrupt to the button pin to listen for presses
-  attachInterrupt(0, buttonInterrupt, BUTTON_DOWN);
+  attachInterrupt(0, buttonInterrupt, BUTTON_UP);
 }
 
 /**
@@ -309,18 +340,20 @@ void buttonInterrupt() {
   //The time in milliseconds of the last button press
   static long lastButtonPress = 0;
 
-  Serial.print("I");
+  // Serial.print("I");
   if (millis() - lastButtonPress > DEBOUNCE_TIME) {
     paused = !paused;
-    Serial.print("Paused state: ");
-    Serial.println(paused);
-    /*
+    // Serial.print("Time since last press: ");
+    // Serial.println(millis() - lastButtonPress);
+    // Serial.print("Paused state: ");
+    // Serial.println(paused);
+    
     if (paused) {
       pauseMIDI();
     } else {
       passMIDI();
     }
-    */
+    
   }
   lastButtonPress = millis();
 }
@@ -331,7 +364,7 @@ void buttonInterrupt() {
 void pauseMIDI() {
   MIDI.turnThruOff();
 
-  LCD.setCursor(2, 8);
+  LCD.setCursor(8, 3);
   LCD.print("-MSC*PAUSED*");
 
   setBacklight(RED);
@@ -343,7 +376,7 @@ void pauseMIDI() {
 void passMIDI() {
   MIDI.turnThruOn();
 
-  LCD.setCursor(2, 8);
+  LCD.setCursor(8, 3);
   LCD.print("-MSC-PASS >>");
 
   setBacklight(GREEN);

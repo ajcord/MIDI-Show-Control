@@ -42,9 +42,34 @@ MSC::MSC(const byte* packet, int len) {
   //Cue number is optional
   if (len > 7) {
     //Copy the cue string out of the data
-    cue = new char[len - 7];
-    memcpy(cue, data + 6, len - 6);
-    cue[len - 7] = 0;
+    byte* cue_ptr = (byte*)data + 6;
+    byte* p = cue_ptr;
+
+    while (*p != SYSEX_END_BYTE) {
+      p++;
+    }
+    int cue_len = p - cue_ptr;
+
+    cue = new char[cue_len + 1];
+    memcpy(cue, cue_ptr, cue_len);
+    cue[cue_len] = 0;
+
+    if (cue_len + 6 < len) {
+      //There must be additional data: the list. Read on.
+      byte* list_ptr = p;
+    
+      while (*p && *p != SYSEX_END_BYTE) {
+        p++;
+      }
+      int list_len = p - list_ptr;
+
+      list = new char[list_len + 1];
+      memcpy(list, list_ptr, list_len);
+      list[list_len] = 0;
+    }
+  } else {
+    cue = "(next)";
+    list = 0;
   }
 }
 
@@ -69,7 +94,7 @@ char* MSC::getCue() {
   return cue;
 }
 
-byte MSC::getList() {
+char* MSC::getList() {
   return list;
 }
 
