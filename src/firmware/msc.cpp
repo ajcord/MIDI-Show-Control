@@ -22,7 +22,6 @@
 #define SYSEX_START_BYTE        0xF0
 #define MIDI_RTS_BYTE           0x7F
 #define MSC_BYTE                0x02
-#define SYSEX_END_BYTE          0xF7
 
 /******************************************************************************
  * Function definitions
@@ -39,49 +38,52 @@ MSC::MSC(const byte* packet, int len) {
   type = (TYPE)data[4];
   command = (COMMAND)data[5];
 
-  //Cue number is optional
-  if (len > 7) {
-    //Copy the cue string out of the data
-    byte* cue_ptr = (byte*)data + 6;
-    byte* p = cue_ptr;
+  ///////////////////////////  Cue string ///////////////////////////
+  byte* p = (byte*)data + 6; //Move past the start bytes
+  byte* cue_ptr = p;
 
-    while (*p && *p != SYSEX_END_BYTE) {
-      p++;
-    }
-    int cue_len = p - cue_ptr;
-    if (cue_len > MAX_CUE_LEN) {
-      cue_len = MAX_CUE_LEN;
-    }
+  //Walk along until we get to the end of the string
+  while (*p && *p != SYSEX_END_BYTE) {
+    p++;
+  }
 
-    memset(cue, ' ', MAX_CUE_LEN);
-    memcpy(cue, cue_ptr, cue_len);
-    cue[MAX_CUE_LEN] = 0;
+  int cue_len = p - cue_ptr;
+  if (cue_len > MAX_CUE_LEN) {
+    cue_len = MAX_CUE_LEN; //Cap the length of the string
+  }
 
-    if (!*p) {
-      //There must be additional data: the list. Read on.
-      p++; //Move past the delimiter
-      byte* list_ptr = p;
-    
-      while (*p && *p != SYSEX_END_BYTE) {
-        p++;
-      }
-      int list_len = p - list_ptr;
-      if (list_len > MAX_LIST_LEN) {
-        list_len = MAX_LIST_LEN;
-      }
+  memset(cue, ' ', MAX_CUE_LEN); //Clear out previous contents
+  memcpy(cue, cue_ptr, cue_len); //Copy cue string
+  cue[MAX_CUE_LEN] = 0; //Terminate
 
-      memset(list, ' ', MAX_LIST_LEN);
-      memcpy(list, list_ptr, list_len);
-      list[MAX_LIST_LEN] = 0;
-    } else {
-      memset(list, ' ', MAX_LIST_LEN);
-      strcpy(list, "NONE");
-    }
-  } else {
-    memset(cue, ' ', MAX_CUE_LEN);
-    strcpy(cue, "NEXT");
-    memset(list, ' ', MAX_LIST_LEN);
-    strcpy(list, "NONE");
+  ///////////////////////////  List string ///////////////////////////
+  if (!*p) {
+    p++; //Move past the delimiter
+  }
+  byte* list_ptr = p;
+
+  //Walk along until we get to the end of the string
+  while (*p && *p != SYSEX_END_BYTE) {
+    p++;
+  }
+
+  int list_len = p - list_ptr;
+  if (list_len > MAX_LIST_LEN) {
+    list_len = MAX_LIST_LEN; //Cap the length of the string
+  }
+
+  memset(list, ' ', MAX_LIST_LEN); //Clear out previous contents
+  memcpy(list, list_ptr, list_len); //Copy list string
+  list[MAX_LIST_LEN] = 0; //Terminate
+
+  if (cue_len == 0) {
+    //There was no cue. Display NEXT instead.
+    memcpy(cue, "NEXT", 4);
+  }
+
+  if (list_len == 0) {
+    //There was no list. Display NONE instead.
+    memcpy(list, "NONE", 4);
   }
 }
 

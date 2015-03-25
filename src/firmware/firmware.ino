@@ -28,6 +28,7 @@
 //https://www.sparkfun.com/products/9598
 #define MIDI_IN_PIN                 0
 #define MIDI_OUT_PIN                1
+#define MAX_PACKET_LENGTH           128 //bytes
 
 //LCD
 //http://learn.adafruit.com/character-lcds
@@ -57,9 +58,11 @@
 #define NORMALLY_OPEN               0
 #define NORMALLY_CLOSED             1
 
-//Button configuration (compile-time option)
-#define BUTTON_MODE                 NORMALLY_OPEN
+//Compile-time options
+#define BUTTON_MODE                 NORMALLY_OPEN //How the button is wired
+#define USE_MIDI                    1 //1 to use MIDI, 0 to use serial
 
+//Constants - do not modify
 #if BUTTON_MODE == NORMALLY_OPEN
 #define BUTTON_DOWN                 RISING
 #define BUTTON_UP                   FALLING
@@ -67,9 +70,6 @@
 #define BUTTON_DOWN                 FALLING
 #define BUTTON_UP                   RISING
 #endif
-
-//Compile-time options
-#define USE_MIDI    0 //Whether to use MIDI or just standard serial
 
 /******************************************************************************
  * Internal function prototypes
@@ -155,8 +155,8 @@ void loop() {
 #if USE_MIDI
     MSC parsedData(MIDI.getSysExArray(), MIDI.getSysExArrayLength());
 #else
-    char buffer[128];
-    int len = Serial.readBytesUntil(0xF7, buffer, 128);
+    char buffer[MAX_PACKET_LENGTH];
+    int len = Serial.readBytesUntil(SYSEX_END_BYTE, buffer, MAX_PACKET_LENGTH);
     MSC parsedData((byte*)buffer, len);
 #endif
     updateLCD(parsedData);

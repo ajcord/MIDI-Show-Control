@@ -59,8 +59,10 @@ typedef struct ARRAY_TAG {
   int length;
 } ARRAY;
 
-#define MAX_CUE_LEN     9 //The maximum length of a cue string
-#define MAX_LIST_LEN    9 //The maximum length of a list string
+#define SYSEX_END_BYTE          0xF7
+
+#define MAX_CUE_LEN             9 //The maximum length of a cue string
+#define MAX_LIST_LEN            9 //The maximum length of a list string
 
 /******************************************************************************
  * Class definition
