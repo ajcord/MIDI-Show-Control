@@ -4,7 +4,7 @@
  *
  * This file contains the code for interpreting MSC commands.
  *
- * Last modified January 10, 2015
+ * Last modified March 25, 2015
  *
  * Copyright (C) 2015. All Rights Reserved.
  */
@@ -45,37 +45,44 @@ MSC::MSC(const byte* packet, int len) {
     byte* cue_ptr = (byte*)data + 6;
     byte* p = cue_ptr;
 
-    while (*p != SYSEX_END_BYTE) {
+    while (*p && *p != SYSEX_END_BYTE) {
       p++;
     }
     int cue_len = p - cue_ptr;
+    if (cue_len > MAX_CUE_LEN) {
+      cue_len = MAX_CUE_LEN;
+    }
 
-    cue = new char[cue_len + 1];
+    memset(cue, ' ', MAX_CUE_LEN);
     memcpy(cue, cue_ptr, cue_len);
-    cue[cue_len] = 0;
+    cue[MAX_CUE_LEN] = 0;
 
-    if (cue_len + 6 < len) {
+    if (!*p) {
       //There must be additional data: the list. Read on.
+      p++; //Move past the delimiter
       byte* list_ptr = p;
     
       while (*p && *p != SYSEX_END_BYTE) {
         p++;
       }
       int list_len = p - list_ptr;
+      if (list_len > MAX_LIST_LEN) {
+        list_len = MAX_LIST_LEN;
+      }
 
-      list = new char[list_len + 1];
+      memset(list, ' ', MAX_LIST_LEN);
       memcpy(list, list_ptr, list_len);
-      list[list_len] = 0;
+      list[MAX_LIST_LEN] = 0;
+    } else {
+      memset(list, ' ', MAX_LIST_LEN);
+      strcpy(list, "NONE");
     }
   } else {
-    cue = "(next)";
-    list = 0;
+    memset(cue, ' ', MAX_CUE_LEN);
+    strcpy(cue, "NEXT");
+    memset(list, ' ', MAX_LIST_LEN);
+    strcpy(list, "NONE");
   }
-}
-
-MSC::~MSC() {
-  delete cue;
-  //Don't delete data[] because it was allocated in MIDI class
 }
 
 byte MSC::getID() {

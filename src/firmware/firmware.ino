@@ -5,7 +5,7 @@
  * This file contains the code that processes received commands and generally
  * manages the Arduino.
  *
- * Last modified January 10, 2015
+ * Last modified March 25, 2015
  *
  * Copyright (C) 2015. All Rights Reserved.
  */
@@ -68,6 +68,9 @@
 #define BUTTON_UP                   RISING
 #endif
 
+//Compile-time options
+#define USE_MIDI    0 //Whether to use MIDI or just standard serial
+
 /******************************************************************************
  * Internal function prototypes
  ******************************************************************************/
@@ -103,7 +106,9 @@ LiquidCrystal LCD(LCD_CONTROL_PIN,
                   LCD_DATA_BIT_7_PIN);
 
 //Create the global MIDI object
+#if USE_MIDI
 MIDI_CREATE_DEFAULT_INSTANCE();
+#endif
 
 //Whether MIDI passthrough is paused or not
 volatile bool paused = false;
@@ -116,9 +121,11 @@ volatile bool paused = false;
  *  Sets up MIDI, the LCD, and the button
  */
 void setup() {
+#if USE_MIDI
+  MIDI.begin();
+#else
   Serial.begin(115200);
-
-  //MIDI.begin();
+#endif
 
   setupLCD();
 
@@ -134,19 +141,24 @@ void loop() {
   static long lastSysExTime = 0;
   static bool lcdIsBlue = false;
 
-  static bool test = true;
-  if (MIDI.read() || test) {
+#if USE_MIDI
+  if (MIDI.read()) {
+#else
+  if (Serial.available()) {
+#endif
     //Flash the LCD blue
     lastSysExTime = millis();
     setBacklight(BLUE);
     lcdIsBlue = true;
-    test = false;
 
     //Get the MSC data and update the LCD
-    // MSC parsedData(MIDI.getSysExArray(), MIDI.getSysExArrayLength());
-    byte sysExArray[] = {0xF0, 0x7F, 0x01, 0x02, 0x7F, 0x01, 0x32, 0x2E, 0x35, 0xF7};
-    int sysExArrayLength = 10;
-    MSC parsedData(sysExArray, sysExArrayLength);
+#if USE_MIDI
+    MSC parsedData(MIDI.getSysExArray(), MIDI.getSysExArrayLength());
+#else
+    char buffer[128];
+    int len = Serial.readBytesUntil(0xF7, buffer, 128);
+    MSC parsedData((byte*)buffer, len);
+#endif
     updateLCD(parsedData);
   }
 
@@ -180,9 +192,11 @@ void setupLCD() {
   LCD.noAutoscroll();
 
   //Display the user interface
-  LCD.print("CUE#:        LIST:  ");
+  LCD.print("CUE#:               ");
   LCD.setCursor(0, 1); //Newline
-  LCD.print("TYPE:          ID:  ");
+  LCD.print("LIST:          ID:  ");
+  LCD.setCursor(0, 2); //Newline
+  LCD.print("WAITING FOR DATA... ");
 
   //Setup the backlight
   pinMode(LCD_RED_BACKLIGHT_PIN, OUTPUT);
@@ -231,15 +245,8 @@ void displayCue(char* cue) {
  *  @param list The formatted, ASCII list number
  */
 void displayList(char* list) {
-  LCD.setCursor(18, 0);
-  
-  //TODO: figure out what to print here. List string might be too long.
-  // if (list != NULL) {
-    // lcdPrintHex(list);
-    // LCD.print(list);
-  // } else {
-    LCD.print("??");
-  // }
+  LCD.setCursor(5, 1);
+  LCD.print(list);
 }
 
 /**
@@ -247,7 +254,7 @@ void displayList(char* list) {
  *  @param type The type of command that was received
  */
 void displayType(TYPE type) {
-  LCD.setCursor(5, 1);
+  LCD.setCursor(15, 0);
   switch(type) {
     case LIGHT:
       LCD.print("LIGHT");
@@ -256,10 +263,10 @@ void displayType(TYPE type) {
       LCD.print("SOUND");
       break;
     case FIREWORKS:
-      LCD.print("PYRO ");
+      LCD.print(" PYRO");
       break;
     case ALL:
-      LCD.print("ALL  ");
+      LCD.print("  ALL");
       break;
   }
 }
@@ -279,9 +286,13 @@ void displayID(byte id) {
  */
 void displayPacket(const byte* data, int len) {
   LCD.setCursor(0, 2);
-  for (int i = 0; i < len && i < LCD_COLUMNS/2; i++) {
-    //Print each byte in the packet in hex
-    lcdPrintHex(data[i]);
+  for (int i = 0; i < LCD_COLUMNS/2; i++) {
+    if (i < len) {
+      //Print each byte in the packet in hex
+      lcdPrintHex(data[i]);
+    } else {
+      LCD.print("  ");
+    }
   }
 
   //Indicate if the packet is too long to fit on the screen
@@ -340,13 +351,8 @@ void buttonInterrupt() {
   //The time in milliseconds of the last button press
   static long lastButtonPress = 0;
 
-  // Serial.print("I");
   if (millis() - lastButtonPress > DEBOUNCE_TIME) {
     paused = !paused;
-    // Serial.print("Time since last press: ");
-    // Serial.println(millis() - lastButtonPress);
-    // Serial.print("Paused state: ");
-    // Serial.println(paused);
     
     if (paused) {
       pauseMIDI();
@@ -362,7 +368,9 @@ void buttonInterrupt() {
  *  Disables MIDI passthrough
  */
 void pauseMIDI() {
+#if USE_MIDI
   MIDI.turnThruOff();
+#endif
 
   LCD.setCursor(8, 3);
   LCD.print("-MSC*PAUSED*");
@@ -374,7 +382,9 @@ void pauseMIDI() {
  *  Enables MIDI passthrough
  */
 void passMIDI() {
+#if USE_MIDI
   MIDI.turnThruOn();
+#endif
 
   LCD.setCursor(8, 3);
   LCD.print("-MSC-PASS >>");

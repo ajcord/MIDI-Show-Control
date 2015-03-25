@@ -5,7 +5,7 @@
  * This file contains the external defines and prototypes for interpreting
  * MSC commands.
  *
- * Last modified January 10, 2015
+ * Last modified March 25, 2015
  *
  * Copyright (C) 2015. All Rights Reserved.
  */
@@ -59,6 +59,9 @@ typedef struct ARRAY_TAG {
   int length;
 } ARRAY;
 
+#define MAX_CUE_LEN     9 //The maximum length of a cue string
+#define MAX_LIST_LEN    9 //The maximum length of a list string
+
 /******************************************************************************
  * Class definition
  ******************************************************************************/
@@ -66,7 +69,6 @@ typedef struct ARRAY_TAG {
 class MSC {
 public:
   MSC(const byte* packet, int len);
-  ~MSC();
 
   byte getID();
   TYPE getType();
@@ -80,8 +82,8 @@ private:
   byte id;
   TYPE type;
   COMMAND command;
-  char* cue;
-  char* list;
+  char cue[MAX_CUE_LEN + 1];
+  char list[MAX_LIST_LEN + 1];
   const byte* data;
   int length;
 };
