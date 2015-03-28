@@ -71,6 +71,32 @@
 #define BUTTON_UP                   RISING
 #endif
 
+//String constants for MSC command types
+char* invalid_str = "INVALID";
+const char* msc_command_type_strings[] = {
+  invalid_str,
+  "GO",
+  "STOP",
+  "RESUME",
+  "TIMED GO",
+  "LOAD",
+  "SET",
+  "FIRE",
+  "ALL OFF",
+  "RESTORE",
+  "RESET",
+  "GO-OFF",
+  invalid_str,
+  invalid_str,
+  invalid_str,
+  invalid_str,
+  invalid_str,
+  "STANDBY+",
+  "STANDBY-",
+  "SEQUENCE+",
+  "SEQUENCE-",
+};
+
 /******************************************************************************
  * Internal function prototypes
  ******************************************************************************/
@@ -81,6 +107,7 @@ void displayCue(char* cue);
 void displayList(char* list);
 void displayType(TYPE type);
 void displayID(byte id);
+void displayCommand(COMMAND cmd);
 void displayPacket(const byte* data, int len);
 
 void setBacklight(int red, int green, int blue);
@@ -217,6 +244,7 @@ void updateLCD(MSC packet) {
   displayList(packet.getList());
   displayType(packet.getType());
   displayID(packet.getID());
+  displayCommand(packet.getCommand());
   displayPacket(packet.getData(), packet.getLength());
 }
 
@@ -278,6 +306,23 @@ void displayType(TYPE type) {
 void displayID(byte id) {
   LCD.setCursor(18, 1);
   lcdPrintHex(id);
+}
+
+/**
+ *  Displays the command
+ *  @param cmd The command
+ */
+void displayCommand(COMMAND cmd) {
+  LCD.setCursor(9, 3);
+  LCD.print("           "); //Clear the space
+  LCD.setCursor(9, 3);
+
+  if (cmd < 0 || cmd >= sizeof(msc_command_type_strings)/sizeof(char*)) {
+    //Prevent under/overflow of string array
+    LCD.print(invalid_str);
+  } else {
+    LCD.print(msc_command_type_strings[cmd]);
+  }
 }
 
 /**

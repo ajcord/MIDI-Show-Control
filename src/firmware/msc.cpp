@@ -53,7 +53,26 @@ MSC::MSC(const byte* packet, int len) {
   }
 
   memset(cue, ' ', MAX_CUE_LEN); //Clear out previous contents
-  memcpy(cue, cue_ptr, cue_len); //Copy cue string
+
+  //Figure out whether the cue is a string or a hex number
+  if (cue_ptr[0] >= ' ' && cue_ptr[0] <= '~') {
+    //Probably a string
+    memcpy(cue, cue_ptr, cue_len); //Copy cue string
+  } else {
+    //Probably a number
+    cue_len *= 2; //Each hex digit takes up two character slots
+    if (cue_len > MAX_CUE_LEN) {
+      cue_len = MAX_CUE_LEN; //Cap the length of the string
+    }
+    for (int i = 0; i < cue_len; i += 2) {
+      char c = cue_ptr[i/2];
+      //Convert the hex digit to ASCII
+      char lo = c & 0x0f;
+      char hi = (c & 0xf0) >> 4;
+      cue[i] = hi + (hi < 0x0a ? '0' : 'A' - 0x0a);
+      cue[i+1] = lo + (lo < 0x0a ? '0' : 'A' - 0x0a);
+    }
+  }
   cue[MAX_CUE_LEN] = 0; //Terminate
 
   ///////////////////////////  List string ///////////////////////////
