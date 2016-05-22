@@ -331,7 +331,12 @@ void displayCommand(COMMAND cmd) {
  */
 void displayPacket(const byte* data, int len) {
   LCD.setCursor(0, 2);
-  for (int i = 0; i < LCD_COLUMNS/2; i++) {
+  int i;
+  // 14 = (20 spaces first row + 8 spaces second row) / (2 spaces per byte)
+  for (i = 0; i < 14; i++) {
+    if (i == 10) {
+      LCD.setCursor(0, 3);
+    }
     if (i < len) {
       //Print each byte in the packet in hex
       lcdPrintHex(data[i]);
@@ -341,8 +346,8 @@ void displayPacket(const byte* data, int len) {
   }
 
   //Indicate if the packet is too long to fit on the screen
-  if (len > LCD_COLUMNS/2) {
-    LCD.setCursor(LCD_COLUMNS - 2, 2);
+  if (len > 14) {
+    LCD.setCursor(6, 3);
     LCD.print("..");
   }
 }
